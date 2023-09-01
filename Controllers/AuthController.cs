@@ -1,10 +1,14 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using ScrumboardAPI.Models;
+using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using BCrypt.Net;
 
 namespace ScrumboardAPI.Controllers
 {
@@ -12,38 +16,42 @@ namespace ScrumboardAPI.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        public static User user = new User();
         private readonly IConfiguration _configuration;
+        private readonly User _user; // For demonstration purposes only
         public AuthController(IConfiguration configuration)
         {
             _configuration = configuration;
+            _user = new User(); // For demonstration purposes only
+            _user.Username = "testuser"; // For demonstration purposes only
+            _user.PasswordHash = BCrypt.Net.BCrypt.HashPassword("testpassword"); // For demonstration purposes only
         }
 
         [HttpPost("register")]
         public ActionResult<User> Register(UserDto request)
         {
-            string passwordHash
-                = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            user.Username = request.Username;
-            user.PasswordHash = passwordHash;
+            _user.Username = request.Username;
+            _user.PasswordHash = passwordHash;
 
-            return Ok(user);
+            return Ok(_user);
         }
 
         [HttpPost("login")]
-        public ActionResult<User> login(UserDto request)
+        public ActionResult<string> Login(UserDto request)
         {
-            if(user.Username != request.Username) 
+            if (_user.Username != request.Username)
             {
                 return BadRequest("User not found");
             }
 
-            if(!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            if (!BCrypt.Net.BCrypt.Verify(request.Password, _user.PasswordHash))
             {
                 return BadRequest("Wrong password.");
             }
-            return Ok(user);
+
+            string token = CreateToken(_user);
+            return Ok(token);
         }
 
         private string CreateToken(User user)
@@ -54,15 +62,15 @@ namespace ScrumboardAPI.Controllers
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                _configuration.GetSection("AppSetting:Token").Value!));
+                _configuration.GetSection("AppSettings:Token").Value));
 
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
 
             var token = new JwtSecurityToken(
-                    claims: claims,
-                    expires: DateTime.Now.AddDays(1),
-                    signingCredentials: creds
-                );
+                claims: claims,
+                expires: DateTime.Now.AddDays(1),
+                signingCredentials: creds
+            );
             var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
             return jwt;
